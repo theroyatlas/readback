@@ -10,9 +10,10 @@ import { LangSwitch, TopBar } from './TopBar.tsx'
 import { api, initialPerson, useSession } from './api.ts'
 import { LangContext, translate, useT } from './i18n.tsx'
 
+// The product, the price and the date in the example are made up.
 const EXAMPLE_GOAL: Record<Lang, string> = {
-  en: 'Write a launch post for Nori, our desktop AI pet that keeps you company while you work. It is for X. Mention the launch date.',
-  zh: '幫 Nori 寫一則發布貼文，要發在 X 上。Nori 是陪你工作的桌面 AI 寵物。貼文用英文寫，要提到發布日期。',
+  en: 'Write a launch post for Acme Timer, a focus timer for remote teams. It is for X. Acme Timer Pro costs $9 a month. Mention the price and the launch date.',
+  zh: '幫 Acme Timer 寫一則發布貼文，要發在 X 上。Acme Timer 是給遠距團隊用的專注計時器。Acme Timer Pro 每月 9 美元。貼文用英文寫，要提到價格和發布日期。',
 }
 
 /** The step to show when the viewer has not picked one: the one running, else the latest with output. */

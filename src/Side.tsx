@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PEOPLE, modelLabel } from '../shared/catalog.ts'
 import type { Handoff, PendingItem, PersonId, Session } from '../shared/types.ts'
 import { Avatar } from './Avatar.tsx'
+import { Icon } from './Icon.tsx'
 import { PIN_KEY } from './format.ts'
 import { useT } from './i18n.tsx'
 
@@ -47,11 +48,17 @@ export function Board({ session: s }: { session: Session }) {
               <p className="pin-text">{`“${pin.text}”`}</p>
               {result && (
                 <p className={`pin-result ${result.met ? 'is-met' : 'is-missed'}`}>
-                  {result.met ? '\u2713' : '\u2717'} {t(result.met ? 'board.met' : 'board.missed', { evidence: result.evidence })}
+                  <Icon name={result.met ? 'check' : 'x'} size={15} />
+                  <span>{t(result.met ? 'board.met' : 'board.missed', { evidence: result.evidence })}</span>
                 </p>
               )}
-              {outcome?.status === 'done' && pin.kind === 'gate' && pin.status === 'active' && <p className="pin-result is-met">{t('board.gate')}</p>}
-              <p className="pin-check">{t('board.check', { q: pin.check.question })}</p>
+              {outcome?.status === 'done' && pin.kind === 'gate' && pin.status === 'active' && (
+                <p className="pin-result is-met">
+                  <Icon name="check" size={15} />
+                  <span>{t('board.gate')}</span>
+                </p>
+              )}
+              {s.handoffs.length > 0 && <p className="pin-check">{t('board.check', { q: pin.check.question })}</p>}
             </li>
             )
           })}
@@ -90,7 +97,7 @@ export function Waiting({
         {answered.map((item) => (
           <li key={item.id} className="pending-row is-answered">
             <span className="pending-q">
-              {'✓'} {item.question}
+              <Icon name="check" size={13} /> {item.question}
             </span>
             <span className="pending-a">
               {item.answeredBy ? PEOPLE[item.answeredBy].name : ''}: {item.answer}

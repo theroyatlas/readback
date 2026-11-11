@@ -64,6 +64,10 @@ export interface Message {
   receipt: Receipt | null
   appliedAtStep: number | null
   pinId: string | null
+  /** Pins this message replaced. Withdrawing the message restores them. */
+  supersededPinIds: string[]
+  /** The approval gate this message opened, if any. */
+  gateId: string | null
   /** Set when the readback call failed; the message is still queued, never dropped. */
   error: string | null
 }

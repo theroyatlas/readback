@@ -56,6 +56,8 @@ export function postMessage(rt: Runtime, text: string, by: PersonId): Message {
     receipt: null,
     appliedAtStep: null,
     pinId: null,
+    supersededPinIds: [],
+    gateId: null,
     error: null,
   }
   s.messages.push(message)
@@ -93,6 +95,12 @@ export function overrideMessage(rt: Runtime, messageId: string, action: 'steer' 
     message.status = 'cancelled'
     const pin = s.pins.find((p) => p.id === message.pinId)
     if (pin) pin.status = 'superseded'
+    // Withdrawing a message also undoes what it changed: the pins it replaced come back, its gate closes.
+    for (const id of message.supersededPinIds) {
+      const old = s.pins.find((p) => p.id === id)
+      if (old) old.status = 'active'
+    }
+    s.pending = s.pending.filter((p) => !(p.id === message.gateId && p.status === 'open'))
   } else {
     if (message.receipt) {
       message.receipt.route = 'steer'
@@ -125,6 +133,8 @@ export function answerPending(rt: Runtime, pendingId: string, text: string, by: 
     },
     appliedAtStep: Math.min(s.activeStep, s.steps.length),
     pinId: null,
+    supersededPinIds: [],
+    gateId: null,
     error: null,
   }
   s.messages.push(message)
@@ -215,7 +225,9 @@ async function writeReceipt(rt: Runtime, message: Message): Promise<void> {
     // Pins this message replaces or withdraws stay visible on the board, marked as superseded.
     for (const id of Array.isArray(out.supersedes_pin_ids) ? out.supersedes_pin_ids : []) {
       const old = s.pins.find((p) => p.id === id && p.status === 'active')
-      if (old) old.status = 'superseded'
+      if (!old) continue
+      old.status = 'superseded'
+      message.supersededPinIds.push(old.id)
     }
 
     const answered = s.pending.find((p) => p.id === out.answers_pending_id && p.status === 'open')
@@ -247,8 +259,9 @@ async function writeReceipt(rt: Runtime, message: Message): Promise<void> {
       s.pins.push(pin)
       message.pinId = pin.id
       if (pin.kind === 'gate') {
+        message.gateId = uid('q')
         s.pending.push({
-          id: uid('q'),
+          id: message.gateId,
           kind: 'gate',
           question: clip(out.gate_question, 200) || `Approve the result before it is finished? ("${message.text}")`,
           assignee: isPersonId(out.gate_assignee) ? out.gate_assignee : message.by,
@@ -499,9 +512,12 @@ async function runStep(rt: Runtime, i: number, alive: () => boolean): Promise<'d
 
 // ---------- outcome check ----------
 
+/** How many extra steps the agent may add to fix what the outcome check found. */
+const MAX_FIXES = 2
+
 /**
  * Checks the final deliverable against every pinned constraint and decision.
- * If something was not followed, the agent gets one extra step to fix it. Returns true when that step was added.
+ * If something was not followed, the agent gets an extra step to fix it (at most MAX_FIXES times). Returns true when that step was added.
  */
 async function checkOutcome(rt: Runtime, last: number): Promise<boolean> {
   const s = rt.session
@@ -535,13 +551,15 @@ async function checkOutcome(rt: Runtime, last: number): Promise<boolean> {
   touch(rt)
 
   const missed = pins.filter((p) => !outcome.checks.find((c) => c.pinId === p.id)?.met)
-  if (missed.length === 0 || s.fixes >= 1) return false
+  if (missed.length === 0 || s.fixes >= MAX_FIXES) return false
   s.fixes += 1
   s.steps.push(
     newStep(
       s.steps.length,
       s.lang === 'zh' ? '修正沒做到的項目' : 'Fix what the check found',
-      `The complete final deliverable again, corrected so that it follows: ${missed.map((p) => `"${p.text}"`).join('; ')}`,
+      `The complete final deliverable again, corrected. The check found: ${missed
+        .map((p) => `"${p.text}" was not followed (${outcome.checks.find((c) => c.pinId === p.id)?.evidence ?? 'no evidence'})`)
+        .join('; ')}`,
     ),
   )
   touch(rt)
@@ -576,6 +594,8 @@ async function doHandoff(rt: Runtime, h: Handoff, i: number): Promise<void> {
         touch(rt)
         await quiz(rt, h, missed, true)
         if (rt.session !== s) return
+        // Still missing a pin after the second briefing: the new model does not get the session.
+        if (h.checks.some((c) => !c.pass)) throw new Error('The new model still missed a pinned instruction after a second briefing.')
       }
     }
     h.status = 'done'

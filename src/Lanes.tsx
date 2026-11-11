@@ -2,15 +2,14 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { PEOPLE, modelLabel } from '../shared/catalog.ts'
 import type { Message, PersonId, Session } from '../shared/types.ts'
 import { Avatar } from './Avatar.tsx'
+import { Icon } from './Icon.tsx'
+import type { IconName } from './Icon.tsx'
 import { blockers, modelColor, nextCheckpoint } from './format.ts'
 import { useT } from './i18n.tsx'
 
 // Geometry of the lane view, in CSS pixels. Everything is positioned from these numbers,
 // so the connector lines always meet the chips, the step cards and the checkpoints.
-const LABEL = 88
-const GAP = 46
 const PAD_RIGHT = 10
-const MIN_COL = 124
 const ROY_TOP = 6
 const AGENT_TOP = 82
 const MIA_TOP = 178
@@ -48,12 +47,12 @@ function toneOf(m: Message): Tone {
   return m.status === 'queued' ? 'queued' : 'landed'
 }
 
-const GLYPH: Record<Tone, string> = {
-  reading: '…',
-  queued: '◷',
-  steer: '⚡',
-  landed: '✓',
-  cancelled: '×',
+const ICON: Record<Tone, IconName> = {
+  reading: 'dots',
+  queued: 'clock',
+  steer: 'bolt',
+  landed: 'check',
+  cancelled: 'x',
 }
 
 function curve(a: Point, b: Point): string {
@@ -81,6 +80,11 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
     return () => observer.disconnect()
   }, [])
 
+  // Narrow windows (two teammates side by side) get a tighter grid.
+  const compact = width < 980
+  const LABEL = compact ? 84 : 92
+  const GAP = compact ? 30 : 46
+  const MIN_COL = compact ? 100 : 124
   const n = Math.max(s.steps.length, 1)
   const colW = Math.max(MIN_COL, (width - LABEL - GAP * (n + 1) - PAD_RIGHT) / n)
   const inner = LABEL + GAP * (n + 1) + colW * n + PAD_RIGHT
@@ -200,13 +204,13 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               title={step.deliverable}
             >
               <span className="step-head">
-                <span className="step-num">{step.status === 'done' ? '✓' : c + 1}</span>
+                <span className="step-num">{step.status === 'done' ? <Icon name="check" size={12} /> : c + 1}</span>
                 <span className="step-title">{step.title}</span>
               </span>
               <span className="step-foot">
                 <i className="model-dot" style={{ background: modelColor(step.model) }} />
                 <span className="step-model">{step.model ? modelLabel(step.model) : t('notStarted')}</span>
-                {step.discarded.length > 0 && <em className="step-steered">{'⚡'} {t('restarted')}</em>}
+                {step.discarded.length > 0 && <em className="step-steered"><Icon name="bolt" size={11} /> {t('restarted')}</em>}
               </span>
               {step.status === 'running' && <span className="step-run" />}
             </button>
@@ -221,7 +225,7 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               <div key={k} className={`checkpoint checkpoint-${state} ${isFinal ? 'is-final' : ''}`} style={{ left: cpX(k), top: MID }}>
                 {handoff && (
                   <span className={`cp-handoff cp-handoff-${handoff.status}`} title={t('lanes.handoffHere')}>
-                    {'⇄'}
+                    <Icon name="swap" size={13} />
                   </span>
                 )}
                 <span className="cp-mark" />
@@ -250,7 +254,7 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               title={message.text}
               onClick={() => onPickMessage(message.id)}
             >
-              <span className="chip-glyph">{GLYPH[tone]}</span>
+              <span className="chip-glyph"><Icon name={ICON[tone]} size={13} /></span>
               <span className="chip-text">{message.text}</span>
             </button>
           ))}

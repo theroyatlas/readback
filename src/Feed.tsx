@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PEOPLE } from '../shared/catalog.ts'
 import type { Message, PersonId, Session } from '../shared/types.ts'
 import { Avatar } from './Avatar.tsx'
+import { Icon } from './Icon.tsx'
 import { KIND_KEY, PIN_KEY, clock, whenText } from './format.ts'
 import { useT } from './i18n.tsx'
 
@@ -144,7 +145,7 @@ function MessageCard({
             {t(KIND_KEY[receipt.kind])}
             {pin && (
               <span className={`pin-note ${pin.status === 'superseded' ? 'is-off' : ''}`}>
-                {t('receipt.pinnedAs', { kind: t(PIN_KEY[pin.kind]).toLowerCase() })}
+                <Icon name="pin" size={12} /> {t('receipt.pinnedAs', { kind: t(PIN_KEY[pin.kind]).toLowerCase() })}
               </span>
             )}
           </dd>

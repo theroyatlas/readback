@@ -256,6 +256,7 @@ export function stepMessages(s: Session, step: Step): ChatMessage[] {
         '',
         'Never invent concrete facts (dates, prices, names, numbers, links). If one is missing from the board and the goal, write [NEEDS: what is missing] in its place. Wording, angle and structure are yours to choose.',
         'The deliverable is for the audience named in the goal. Do not address your teammates inside it.',
+        'Before you answer, check your text against every line of the pinned board. If a length limit is pinned, count and stay clearly under it.',
       ].join('\n'),
     },
     { role: 'user', content: user.join('\n') },
