@@ -129,6 +129,18 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
   const chips = [...roy.chips, ...mia.chips]
   const more = [...roy.more, ...mia.more]
 
+  // Teammates who are typing right now: a marker in their lane, tied to the checkpoint the agent will hold at.
+  const typingCol = clamp(Math.min(s.activeStep, n - 1), 0, n - 1)
+  const ghosts = s.typing.map((person) => {
+    const above = person === 'roy'
+    const taken = chips.filter((chip) => chip.message.by === person && chip.left === colX(typingCol)).length
+    const slot = Math.min(taken, 1)
+    const top = above ? ROY_TOP + PERSON_H - 6 - CHIP_H - slot * (CHIP_H + CHIP_GAP) : MIA_TOP + 6 + slot * (CHIP_H + CHIP_GAP)
+    const from = { x: colX(typingCol) + 18 + slot * 20, y: above ? top + CHIP_H : top }
+    const to = { x: cpX(clamp(nextCheckpoint(s), 0, n)), y: above ? MID - 10 : MID + 10 }
+    return { person, left: colX(typingCol), top, from, to }
+  })
+
   const progressEnd =
     s.status === 'done' ? cpX(n) : s.status === 'running' ? colX(s.activeStep) + colW / 2 : cpX(clamp(s.activeStep, 0, n))
   const waitingOn = s.status === 'waiting' ? [...new Set(blockers(s).map((p) => p.assignee))] : []
@@ -179,12 +191,18 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
             <line className="track-done" x1={cpX(0)} y1={MID} x2={Math.max(cpX(0), progressEnd)} y2={MID} />
             {chips.map(({ message, from, to, tone }) =>
               to ? (
-                <g key={message.id} className={`link link-${tone}`}>
-                  <path d={curve(from, to)} />
+                <g key={`${message.id}-${tone}`} className={`link link-${tone}`}>
+                  <path d={curve(from, to)} pathLength={tone === 'queued' ? undefined : 1} />
                   <circle cx={to.x} cy={to.y} r={3.5} />
                 </g>
               ) : null,
             )}
+            {ghosts.map(({ person, from, to }) => (
+              <g key={`typing-${person}`} className="link link-typing">
+                <path d={curve(from, to)} />
+                <circle cx={to.x} cy={to.y} r={3.5} />
+              </g>
+            ))}
           </svg>
 
           {s.steps.length === 0 && (
@@ -257,6 +275,16 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               <span className="chip-glyph"><Icon name={ICON[tone]} size={13} /></span>
               <span className="chip-text">{message.text}</span>
             </button>
+          ))}
+          {ghosts.map(({ person, left, top }) => (
+            <div key={`typing-${person}`} className="chip chip-typing" style={{ left, top, width: colW, height: CHIP_H }}>
+              <span className="typing-dots">
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className="chip-text">{t('typing')}</span>
+            </div>
           ))}
           {more.map((m) => (
             <span key={`${m.left}-${m.top}`} className="chip-more" style={{ left: m.left, top: m.top }}>

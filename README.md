@@ -99,7 +99,3 @@ Not built yet:
 ## How it was built
 
 Everything in this repository was written during the hackathon's build session. Claude Code was the coding agent. The models the product runs on are served by GMI Cloud. The products and prices in the example goal are made up.
-
-## License
-
-MIT

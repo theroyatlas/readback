@@ -67,6 +67,7 @@ const STRINGS = {
   'you': { en: 'you', zh: '你' },
   'You': { en: 'You', zh: '你' },
   'agent': { en: 'Agent', zh: 'Agent' },
+  'typing': { en: 'typing', zh: '正在輸入' },
   'notStarted': { en: 'not started', zh: '還沒開始' },
   'restarted': { en: 'restarted', zh: '重做' },
   'planningDots': { en: 'Planning the work...', zh: '正在排計畫…' },
