@@ -2,21 +2,33 @@ import { useEffect, useRef, useState } from 'react'
 import { PEOPLE } from '../shared/catalog.ts'
 import type { Message, PersonId, Session } from '../shared/types.ts'
 import { Avatar } from './Avatar.tsx'
-import { KIND_LABEL, PIN_LABEL, clock, whenText } from './format.ts'
+import { KIND_KEY, PIN_KEY, clock, whenText } from './format.ts'
+import { useT } from './i18n.tsx'
 
 interface Props {
   session: Session
   me: PersonId
   onSay: (text: string) => Promise<void>
+  onTyping: () => void
   onSteerNow: (id: string) => void
   onCancel: (id: string) => void
 }
 
 /** Every message a teammate sent, with the agent's readback of it. */
-export function Feed({ session: s, me, onSay, onSteerNow, onCancel }: Props) {
+export function Feed({ session: s, me, onSay, onTyping, onSteerNow, onCancel }: Props) {
+  const t = useT()
   const list = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const lastTyping = useRef(0)
+
+  // Tell the session we are typing, at most once a second, so the agent can hold its next checkpoint.
+  const noteTyping = () => {
+    const now = Date.now()
+    if (now - lastTyping.current < 1000) return
+    lastTyping.current = now
+    onTyping()
+  }
 
   const count = s.messages.length
   useEffect(() => {
@@ -38,15 +50,15 @@ export function Feed({ session: s, me, onSay, onSteerNow, onCancel }: Props) {
   return (
     <section className="card feed">
       <header className="card-head">
-        <h2>Messages and readbacks</h2>
-        <p>The agent reads every message back before it acts on it.</p>
+        <h2>{t('feed.title')}</h2>
+        <p>{t('feed.sub')}</p>
       </header>
       <div className="feed-list" ref={list}>
         <article className="msg msg-goal">
           <div className="msg-top">
             {s.startedBy && <Avatar who={s.startedBy} size={22} />}
-            <strong>{s.startedBy ? PEOPLE[s.startedBy].name : 'Team'}</strong>
-            <span className="msg-meta">set the goal</span>
+            <strong>{s.startedBy ? PEOPLE[s.startedBy].name : ''}</strong>
+            <span className="msg-meta">{t('feed.setGoal')}</span>
           </div>
           <p className="msg-text">{s.goal}</p>
         </article>
@@ -65,17 +77,21 @@ export function Feed({ session: s, me, onSay, onSteerNow, onCancel }: Props) {
         <textarea
           value={draft}
           rows={2}
-          placeholder="Tell the agent something. It decides whether to interrupt or wait, and you can overrule it."
-          onChange={(event) => setDraft(event.target.value)}
+          placeholder={t('feed.placeholder')}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (event.target.value.trim()) noteTyping()
+          }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            // Enter sends; Shift+Enter is a new line. Ignore Enter while an input method is composing.
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
               void submit()
             }
           }}
         />
         <button type="submit" className="btn btn-primary" disabled={!draft.trim() || sending}>
-          Send
+          {t('send')}
         </button>
       </form>
     </section>
@@ -95,6 +111,7 @@ function MessageCard({
   onSteerNow: (id: string) => void
   onCancel: (id: string) => void
 }) {
+  const t = useT()
   const pin = s.pins.find((p) => p.id === m.pinId)
   const receipt = m.receipt
   const tone = m.status === 'cancelled' ? 'cancelled' : !receipt ? 'reading' : receipt.route === 'steer' ? 'steer' : m.status === 'queued' ? 'queued' : 'landed'
@@ -105,56 +122,56 @@ function MessageCard({
         <strong>{PEOPLE[m.by].name}</strong>
         <span className="msg-meta">{clock(m.at)}</span>
         <span className={`tag tag-${tone}`}>
-          {tone === 'reading' && 'Delivered'}
-          {tone === 'queued' && 'Queued'}
-          {tone === 'steer' && (m.status === 'steering' ? 'Steering' : 'Steered')}
-          {tone === 'landed' && 'Landed'}
-          {tone === 'cancelled' && 'Withdrawn'}
+          {tone === 'reading' && t('tag.delivered')}
+          {tone === 'queued' && t('tag.queued')}
+          {tone === 'steer' && (m.status === 'steering' ? t('tag.steering') : t('tag.steered'))}
+          {tone === 'landed' && t('tag.landed')}
+          {tone === 'cancelled' && t('tag.withdrawn')}
         </span>
       </div>
       <p className="msg-text">{m.text}</p>
 
       {!receipt ? (
         <div className="receipt receipt-loading">
-          <span className="shimmer" /> Reading it back...
+          <span className="shimmer" /> {t('receipt.reading')}
         </div>
       ) : (
         <dl className="receipt">
-          <dt>Heard</dt>
+          <dt>{t('receipt.heard')}</dt>
           <dd>{receipt.heard}</dd>
-          <dt>Type</dt>
+          <dt>{t('receipt.type')}</dt>
           <dd>
-            {KIND_LABEL[receipt.kind]}
+            {t(KIND_KEY[receipt.kind])}
             {pin && (
               <span className={`pin-note ${pin.status === 'superseded' ? 'is-off' : ''}`}>
-                pinned as {PIN_LABEL[pin.kind].toLowerCase()}
+                {t('receipt.pinnedAs', { kind: t(PIN_KEY[pin.kind]).toLowerCase() })}
               </span>
             )}
           </dd>
-          <dt>When</dt>
+          <dt>{t('receipt.when')}</dt>
           <dd>
-            <span className="when">{whenText(m, s)}</span>
+            <span className="when">{whenText(m, s, t)}</span>
             {receipt.why && <span className="why">{receipt.why}</span>}
           </dd>
           {receipt.expected && (
             <>
-              <dt>Expect</dt>
+              <dt>{t('receipt.expect')}</dt>
               <dd>{receipt.expected}</dd>
             </>
           )}
         </dl>
       )}
 
-      {m.error && <p className="msg-error">The readback call failed, so your exact words were queued as written.</p>}
+      {m.error && <p className="msg-error">{t('receipt.failed')}</p>}
 
       {m.status === 'queued' && (
         <div className="msg-actions">
           <button type="button" className="btn btn-steer" onClick={() => onSteerNow(m.id)}>
-            Steer now
+            {t('steerNow')}
           </button>
           {mine && (
             <button type="button" className="btn btn-quiet" onClick={() => onCancel(m.id)}>
-              Withdraw
+              {t('withdraw')}
             </button>
           )}
         </div>

@@ -5,8 +5,8 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, join, normalize } from 'node:path'
-import { PACES, isPersonId } from '../shared/catalog.ts'
-import type { Pace } from '../shared/types.ts'
+import { isPersonId } from '../shared/catalog.ts'
+import type { Lang } from '../shared/types.ts'
 import * as agent from './agent.ts'
 import { getRuntime, resetRuntime, subscribe, touch } from './store.ts'
 import type { Runtime } from './store.ts'
@@ -112,10 +112,13 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
       case 'handoff':
         agent.requestHandoff(rt, text(body, 'model', 120), person(body))
         break
-      case 'pace':
-        if (!PACES.includes(body.pace as Pace)) throw new HttpError(400, 'Unknown pace.')
-        rt.session.pace = body.pace as Pace
+      case 'lang':
+        if (body.lang !== 'en' && body.lang !== 'zh') throw new HttpError(400, 'Unknown language.')
+        rt.session.lang = body.lang as Lang
         touch(rt)
+        break
+      case 'typing':
+        agent.typing(rt, person(body))
         break
       case 'retry':
         agent.retry(rt)

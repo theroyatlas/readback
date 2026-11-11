@@ -16,6 +16,8 @@ export interface Runtime {
   waiters: Set<() => void>
   /** Readbacks being written. A checkpoint waits for them so no delivered message slips past it. */
   inflight: Set<Promise<void>>
+  /** Until when each teammate counts as typing (epoch ms). */
+  typing: Map<string, number>
   /** The agent loop, while one is running. */
   loop: Promise<void> | null
 }
@@ -28,7 +30,7 @@ function emptySession(id: string): Session {
     goal: '',
     startedBy: null,
     model: DEFAULT_MODEL,
-    pace: 'readable',
+    lang: 'en',
     status: 'empty',
     activeStep: 0,
     steps: [],
@@ -36,6 +38,9 @@ function emptySession(id: string): Session {
     pins: [],
     pending: [],
     handoffs: [],
+    outcome: null,
+    fixes: 0,
+    typing: [],
     error: null,
     version: 0,
   }
@@ -52,6 +57,7 @@ export function getRuntime(id: string): Runtime {
       steering: [],
       waiters: new Set(),
       inflight: new Set(),
+      typing: new Map(),
       loop: null,
     }
     runtimes.set(id, rt)
@@ -61,13 +67,14 @@ export function getRuntime(id: string): Runtime {
 
 /** Throws the session away and starts clean. Listeners stay connected. */
 export function resetRuntime(rt: Runtime): void {
-  const pace = rt.session.pace
+  const { lang } = rt.session
   rt.abort?.abort()
   rt.abort = null
   rt.steering = []
   rt.inflight = new Set()
+  rt.typing = new Map()
   rt.loop = null
-  rt.session = { ...emptySession(rt.session.id), pace }
+  rt.session = { ...emptySession(rt.session.id), lang }
   wake(rt)
   touch(rt)
 }

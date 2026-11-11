@@ -1,5 +1,6 @@
 import { MODELS, PEOPLE } from '../shared/catalog.ts'
-import type { IntentKind, Message, PendingItem, PinKind, Session } from '../shared/types.ts'
+import type { IntentKind, Message, PendingItem, PersonId, PinKind, Session } from '../shared/types.ts'
+import type { Key, Translate } from './i18n.tsx'
 
 const MODEL_COLORS = ['#6247d6', '#2a7de1', '#0f9d8a', '#30384a']
 
@@ -8,18 +9,18 @@ export function modelColor(id: string | null): string {
   return index < 0 ? '#b3bac7' : MODEL_COLORS[index % MODEL_COLORS.length]
 }
 
-export const KIND_LABEL: Record<IntentKind, string> = {
-  add: 'Addition',
-  revise: 'Revision',
-  retract: 'Retraction',
-  answer: 'Answer',
-  question: 'Question',
+export const KIND_KEY: Record<IntentKind, Key> = {
+  add: 'kind.add',
+  revise: 'kind.revise',
+  retract: 'kind.retract',
+  answer: 'kind.answer',
+  question: 'kind.question',
 }
 
-export const PIN_LABEL: Record<PinKind, string> = {
-  constraint: 'Constraint',
-  decision: 'Decision',
-  gate: 'Approval gate',
+export const PIN_KEY: Record<PinKind, Key> = {
+  constraint: 'pin.constraint',
+  decision: 'pin.decision',
+  gate: 'pin.gate',
 }
 
 export function clock(at: number): string {
@@ -39,47 +40,66 @@ export function nextCheckpoint(s: Session): number {
   return s.status === 'running' ? s.activeStep + 1 : s.activeStep
 }
 
-export function checkpointName(s: Session, k: number): string {
-  return k >= s.steps.length ? 'at the final checkpoint' : `at the checkpoint before step ${k + 1}`
+function where(s: Session, k: number, t: Translate): string {
+  return k >= s.steps.length ? t('where.final') : t('where.step', { n: k + 1 })
 }
 
-export function whenText(m: Message, s: Session): string {
+export function whenText(m: Message, s: Session, t: Translate): string {
   switch (m.status) {
     case 'delivered':
-      return 'Delivered. The agent is reading it back.'
+      return t('when.delivered')
     case 'queued':
-      return `Queued. It lands ${checkpointName(s, nextCheckpoint(s))}.`
+      return t('when.queued', { where: where(s, nextCheckpoint(s), t) })
     case 'steering':
-      return `Interrupting step ${s.activeStep + 1} now.`
+      return t('when.steering', { n: s.activeStep + 1 })
     case 'applied':
-      if (m.receipt?.kind === 'answer') return 'Recorded. Nothing was interrupted.'
-      if (m.receipt?.route === 'steer') return `Steered. Step ${(m.appliedAtStep ?? 0) + 1} restarted with it.`
-      return `Landed ${checkpointName(s, m.appliedAtStep ?? 0)}.`
+      if (m.receipt?.kind === 'answer') return t('when.answer')
+      if (m.receipt?.route === 'steer') return t('when.steered', { n: (m.appliedAtStep ?? 0) + 1 })
+      return t('when.landed', { where: where(s, m.appliedAtStep ?? 0, t) })
     case 'cancelled':
-      return 'Withdrawn before it reached the agent.'
+      return t('when.cancelled')
   }
 }
 
-export function statusText(s: Session): string {
+export function statusText(s: Session, t: Translate): string {
   const total = s.steps.length
   switch (s.status) {
     case 'empty':
-      return 'No goal yet'
+      return t('status.empty')
     case 'planning':
-      return 'Planning the work'
+      return t('status.planning')
     case 'running':
-      return `Step ${s.activeStep + 1} of ${total} is running`
+      return t('status.running', { n: s.activeStep + 1, total })
     case 'checkpoint':
-      return s.activeStep >= total ? 'At the final checkpoint' : `Checkpoint before step ${s.activeStep + 1}`
+      if (s.typing.length) return t('status.holding', { names: s.typing.map((who) => PEOPLE[who].name).join(t('and')) })
+      if (s.outcome?.status === 'checking') return t('status.checking')
+      return s.activeStep >= total ? t('status.checkpointFinal') : t('status.checkpoint', { n: s.activeStep + 1 })
     case 'waiting': {
       const names = [...new Set(blockers(s).map((p) => PEOPLE[p.assignee].name))]
-      return `Waiting on ${names.join(' and ') || 'the team'}`
+      return t('status.waiting', { names: names.join(t('and')) || t('theTeam') })
     }
     case 'handoff':
-      return 'Handing off to another model'
+      return t('status.handoff')
     case 'done':
-      return 'Done'
+      return t('status.done')
     case 'error':
-      return 'Stopped on an error'
+      return t('status.error')
   }
+}
+
+/** One plain sentence telling this viewer what to do next. */
+export function guideText(s: Session, me: PersonId, t: Translate): string {
+  if (s.status === 'error') return t('guide.error')
+  if (s.status === 'planning') return t('guide.planning')
+  if (s.status === 'checkpoint' && s.typing.length) {
+    return t('guide.holding', { names: s.typing.map((who) => PEOPLE[who].name).join(t('and')) })
+  }
+  const blocking = s.status === 'waiting' ? blockers(s) : []
+  if (blocking.some((p) => p.assignee === me)) return t('guide.answer')
+  if (blocking.length) return t('guide.other', { name: PEOPLE[blocking[0].assignee].name })
+  if (s.messages.some((m) => m.status === 'queued')) return t('guide.queued')
+  if (s.status === 'done') return t('guide.done')
+  if (s.messages.length === 0) return t('guide.say')
+  if (s.handoffs.length === 0 && s.pins.some((p) => p.status === 'active')) return t('guide.handoff')
+  return t('guide.more')
 }

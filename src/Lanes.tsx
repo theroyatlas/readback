@@ -3,6 +3,7 @@ import { PEOPLE, modelLabel } from '../shared/catalog.ts'
 import type { Message, PersonId, Session } from '../shared/types.ts'
 import { Avatar } from './Avatar.tsx'
 import { blockers, modelColor, nextCheckpoint } from './format.ts'
+import { useT } from './i18n.tsx'
 
 // Geometry of the lane view, in CSS pixels. Everything is positioned from these numbers,
 // so the connector lines always meet the chips, the step cards and the checkpoints.
@@ -69,6 +70,7 @@ interface Props {
 }
 
 export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Props) {
+  const t = useT()
   const frame = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1100)
   useLayoutEffect(() => {
@@ -150,14 +152,14 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               <Avatar who={person} size={26} />
               <span>
                 {PEOPLE[person].name}
-                {me === person && <em>you</em>}
+                {me === person && <em>{t('you')}</em>}
               </span>
             </div>
           ))}
           <div className="lane-label lane-label-agent" style={{ top: MID - 18, width: LABEL }}>
             <Avatar who="agent" size={26} />
             <span>
-              Agent
+              {t('agent')}
               <small>{modelLabel(s.model)}</small>
             </span>
           </div>
@@ -183,7 +185,7 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
 
           {s.steps.length === 0 && (
             <div className="step step-running step-placeholder" style={{ left: colX(0), top: CARD_TOP, width: colW, height: CARD_H }}>
-              <span className="step-title">Planning the work...</span>
+              <span className="step-title">{t('planningDots')}</span>
               <span className="step-run" />
             </div>
           )}
@@ -203,8 +205,8 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
               </span>
               <span className="step-foot">
                 <i className="model-dot" style={{ background: modelColor(step.model) }} />
-                <span className="step-model">{step.model ? modelLabel(step.model) : 'not started'}</span>
-                {step.discarded.length > 0 && <em className="step-steered">{'⚡'} restarted</em>}
+                <span className="step-model">{step.model ? modelLabel(step.model) : t('notStarted')}</span>
+                {step.discarded.length > 0 && <em className="step-steered">{'⚡'} {t('restarted')}</em>}
               </span>
               {step.status === 'running' && <span className="step-run" />}
             </button>
@@ -218,7 +220,7 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
             return (
               <div key={k} className={`checkpoint checkpoint-${state} ${isFinal ? 'is-final' : ''}`} style={{ left: cpX(k), top: MID }}>
                 {handoff && (
-                  <span className={`cp-handoff cp-handoff-${handoff.status}`} title="Handed off to another model here">
+                  <span className={`cp-handoff cp-handoff-${handoff.status}`} title={t('lanes.handoffHere')}>
                     {'⇄'}
                   </span>
                 )}
@@ -261,16 +263,16 @@ export function Lanes({ session: s, me, selected, onSelect, onPickMessage }: Pro
       </div>
       <div className="lanes-legend">
         <span>
-          <i className="key key-queued" /> queued for the next checkpoint
+          <i className="key key-queued" /> {t('legend.queued')}
         </span>
         <span>
-          <i className="key key-steer" /> steered the running step
+          <i className="key key-steer" /> {t('legend.steer')}
         </span>
         <span>
-          <i className="key key-landed" /> reached the agent
+          <i className="key key-landed" /> {t('legend.landed')}
         </span>
         <span>
-          <i className="key key-cp" /> checkpoint
+          <i className="key key-cp" /> {t('legend.checkpoint')}
         </span>
       </div>
     </section>

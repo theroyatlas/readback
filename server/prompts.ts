@@ -1,8 +1,15 @@
 // Every prompt the agent sends, in one place, so the team (and a reviewer) can read exactly what the model is told.
 
 import { PEOPLE, modelLabel } from '../shared/catalog.ts'
-import type { Handoff, Message, Pin, Session, Step } from '../shared/types.ts'
+import type { Handoff, Lang, Message, Pin, Session, Step } from '../shared/types.ts'
 import type { ChatMessage } from './gmi.ts'
+
+/** The agent writes about the work in the team's language. Ids, enum values and quoted words never change. */
+export function languageRule(lang: Lang): string {
+  return lang === 'zh'
+    ? 'Language: write every free-text field in Traditional Chinese as used in Taiwan. Keep enum values, ids and quoted teammate words exactly as given.'
+    : 'Language: write every free-text field in English.'
+}
 
 export function activePins(s: Session): Pin[] {
   return s.pins.filter((p) => p.status === 'active')
@@ -86,6 +93,7 @@ export function planMessages(s: Session): ChatMessage[] {
         'For each question give the first step that needs the answer (1-based) and who should answer.',
         'Step 1 must be doable without the missing facts, so work can start while the team answers: needed_by_step is 2 or later.',
         `${starter} started the session and answers unless someone else clearly owns the fact.`,
+        languageRule(s.lang),
       ].join('\n'),
     },
     { role: 'user', content: `Goal: ${s.goal}\n\nPinned board:\n${boardText(s)}\n\nReturn the plan as JSON.` },
@@ -177,6 +185,7 @@ export function receiptMessages(s: Session, m: Message): ChatMessage[] {
         'For a gate, set gate_assignee to the person who must approve and gate_question to the approval being asked for. Otherwise use "none" and an empty string.',
         'supersedes_pin_ids: ids of pins on the board that this message replaces or withdraws. Usually empty.',
         'answers_pending_id: the id of the open question this message answers, or an empty string.',
+        languageRule(s.lang),
       ].join('\n'),
     },
     {
@@ -193,7 +202,9 @@ export function receiptMessages(s: Session, m: Message): ChatMessage[] {
         '',
         `New message from ${PEOPLE[m.by].name}: "${m.text}"`,
         '',
-        'Return the receipt as JSON.',
+        s.lang === 'zh'
+          ? 'Return the receipt as JSON. Write heard, why, expected, check_question, check_expected and gate_question in Traditional Chinese (Taiwan).'
+          : 'Return the receipt as JSON.',
       ].join('\n'),
     },
   ]
@@ -255,6 +266,51 @@ export function renderPrompt(messages: ChatMessage[]): string {
   return messages.map((m) => `${m.role.toUpperCase()}\n${m.content}`).join('\n\n----------\n\n')
 }
 
+// ---------- outcome check ----------
+
+export const OUTCOME_SCHEMA = {
+  type: 'object',
+  properties: {
+    checks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { pin_id: { type: 'string' }, met: { type: 'boolean' }, evidence: { type: 'string' } },
+        required: ['pin_id', 'met', 'evidence'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['checks'],
+  additionalProperties: false,
+}
+
+export interface OutcomeOut {
+  checks: { pin_id: string; met: boolean; evidence: string }[]
+}
+
+/** A readback says what the agent understood. This checks what it actually delivered. */
+export function outcomeMessages(s: Session, pins: Pin[], deliverable: string): ChatMessage[] {
+  const words = deliverable.trim().split(/\s+/).filter(Boolean).length
+  const rows = pins.map((p) => `${p.id} [${p.kind}] "${p.text}"${p.context ? ` (answer to: ${p.context})` : ''}`).join('\n')
+  return [
+    {
+      role: 'system',
+      content: [
+        'You check a finished deliverable against the instructions a team pinned while it was being written.',
+        'For each pin decide met: true only when the deliverable itself follows it. Judge from the deliverable text, not from intentions.',
+        'evidence: quote the part of the deliverable that shows it (at most 12 words), or say what is missing or wrong.',
+        'The word and character counts are measured for you. Use them as given and do not recount.',
+        languageRule(s.lang),
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `Pinned instructions:\n${rows}\n\nDeliverable:\n${deliverable.trim()}\n\nMeasured: ${words} words, ${deliverable.trim().length} characters.\n\nReturn one check per pin id as JSON.`,
+    },
+  ]
+}
+
 // ---------- handoff ----------
 
 /** Built from session state, not written by a model: the pinned words go across verbatim. */
@@ -305,7 +361,7 @@ export interface TakeoverOut {
   answers: { pin_id: string; answer: string }[]
 }
 
-export function takeoverMessages(note: string, pins: Pin[], rebrief: boolean): ChatMessage[] {
+export function takeoverMessages(note: string, pins: Pin[], rebrief: boolean, lang: Lang): ChatMessage[] {
   const questions = pins.map((p) => `${p.id}: ${p.check.question}`).join('\n')
   const extra = rebrief
     ? `\n\nYou missed these on the first try. Read them again, word for word:\n${pins.map((p) => `- "${p.text}"`).join('\n')}`
@@ -314,7 +370,7 @@ export function takeoverMessages(note: string, pins: Pin[], rebrief: boolean): C
     {
       role: 'system',
       content:
-        'You are taking over a task in progress from another AI model. All you know is the handoff note. Before you may continue, answer each check question in one or two sentences, based only on the note. If the note does not tell you, say so.',
+        'You are taking over a task in progress from another AI model. All you know is the handoff note. Before you may continue, answer each check question in one or two sentences, based only on the note. If the note does not tell you, say so. ' + languageRule(lang),
     },
     { role: 'user', content: `${note}${extra}\n\nCheck questions (answer each one, keep its id):\n${questions}\n\nReturn JSON.` },
   ]
@@ -341,7 +397,7 @@ export interface GradeOut {
   grades: { pin_id: string; pass: boolean; note: string }[]
 }
 
-export function gradeMessages(pins: Pin[], answers: Map<string, string>): ChatMessage[] {
+export function gradeMessages(pins: Pin[], answers: Map<string, string>, lang: Lang): ChatMessage[] {
   const rows = pins
     .map((p) =>
       [
@@ -357,7 +413,7 @@ export function gradeMessages(pins: Pin[], answers: Map<string, string>): ChatMe
     {
       role: 'system',
       content:
-        'You grade whether a model that is taking over a task has caught each pinned instruction. Pass when the answer shows the model knows the pinned instruction and would follow it. A vague, missing or contradicting answer fails. note: at most 12 words.',
+        'You grade whether a model that is taking over a task has caught each pinned instruction. Pass when the answer shows the model knows the pinned instruction and would follow it. A vague, missing or contradicting answer fails. note: at most 12 words. ' + languageRule(lang),
     },
     { role: 'user', content: `${rows}\n\nReturn one grade per pin id as JSON.` },
   ]

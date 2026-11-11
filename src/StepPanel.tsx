@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { PEOPLE, modelLabel } from '../shared/catalog.ts'
 import type { Session } from '../shared/types.ts'
 import { modelColor } from './format.ts'
+import { useT } from './i18n.tsx'
 
 type Tab = 'output' | 'prompt' | 'discarded'
 
 /** What the agent produced in one step, the exact prompt it was given, and anything a steer threw away. */
 export function StepPanel({ session: s, index }: { session: Session; index: number }) {
+  const t = useT()
   const [tab, setTab] = useState<Tab>('output')
   const step = s.steps[index]
 
@@ -14,10 +16,10 @@ export function StepPanel({ session: s, index }: { session: Session; index: numb
     return (
       <section className="card step-panel">
         <header className="card-head">
-          <h2>Agent output</h2>
-          <p>{s.status === 'planning' ? 'The agent is breaking the goal into steps.' : 'No step yet.'}</p>
+          <h2>{t('step.agentOutput')}</h2>
+          <p>{s.status === 'planning' ? t('step.planningSub') : t('step.none')}</p>
         </header>
-        <div className="output output-empty">The plan will appear in the lanes above.</div>
+        <div className="output output-empty">{t('step.planAbove')}</div>
       </section>
     )
   }
@@ -29,25 +31,23 @@ export function StepPanel({ session: s, index }: { session: Session; index: numb
   return (
     <section className="card step-panel">
       <header className="card-head">
-        <h2>
-          Step {index + 1}: {step.title}
-        </h2>
+        <h2>{t('step.title', { n: index + 1, title: step.title })}</h2>
         <p>
           <i className="model-dot" style={{ background: modelColor(step.model) }} />
-          {step.model ? modelLabel(step.model) : 'Not started'} {'·'} {step.deliverable}
+          {step.model ? modelLabel(step.model) : t('step.notStarted')} {'·'} {step.deliverable}
         </p>
       </header>
 
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={shown === 'output'} onClick={() => setTab('output')}>
-          Output
+          {t('tab.output')}
         </button>
         <button type="button" role="tab" aria-selected={shown === 'prompt'} onClick={() => setTab('prompt')}>
-          Exact prompt
+          {t('tab.prompt')}
         </button>
         {step.discarded.length > 0 && (
           <button type="button" role="tab" aria-selected={shown === 'discarded'} onClick={() => setTab('discarded')}>
-            Discarded by a steer ({step.discarded.length})
+            {t('tab.discarded', { n: step.discarded.length })}
           </button>
         )}
       </div>
@@ -59,7 +59,7 @@ export function StepPanel({ session: s, index }: { session: Session; index: numb
               {reached.map((m) => (
                 <li key={m.id}>
                   <span className={`tag ${step.steeredBy.includes(m.id) ? 'tag-steer' : 'tag-landed'}`}>
-                    {step.steeredBy.includes(m.id) ? 'steered' : 'at checkpoint'}
+                    {step.steeredBy.includes(m.id) ? t('reached.steer') : t('reached.checkpoint')}
                   </span>
                   <strong>{PEOPLE[m.by].name}:</strong> {m.text}
                 </li>
@@ -67,28 +67,28 @@ export function StepPanel({ session: s, index }: { session: Session; index: numb
             </ul>
           )}
           <div className={`output ${step.status === 'running' ? 'is-live' : ''}`}>
-            {step.output || (step.status === 'pending' ? 'Not started yet.' : '')}
+            {step.output || (step.status === 'pending' ? t('step.notStartedYet') : '')}
             {step.status === 'running' && <span className="caret" />}
           </div>
         </>
       )}
 
-      {shown === 'prompt' && (
-        <pre className="prompt">{step.prompt ?? 'The prompt is written when the step starts, so it includes everything on the board at that moment.'}</pre>
-      )}
+      {shown === 'prompt' && <pre className="prompt">{step.prompt ?? t('prompt.later')}</pre>}
 
       {shown === 'discarded' &&
         step.discarded.map((attempt, i) => (
           <div key={i} className="discarded">
             <p className="discarded-why">
-              Thrown away when{' '}
-              {attempt.steeredBy
-                .map((id) => byId.get(id))
-                .filter((m) => m !== undefined)
-                .map((m) => `${PEOPLE[m.by].name} said "${m.text}"`)
-                .join(' and ') || 'a teammate steered'}
+              {t('discarded.why', {
+                who:
+                  attempt.steeredBy
+                    .map((id) => byId.get(id))
+                    .filter((m) => m !== undefined)
+                    .map((m) => t('discarded.said', { name: PEOPLE[m.by].name, text: m.text }))
+                    .join(t('and')) || t('discarded.someone'),
+              })}
             </p>
-            <div className="output output-struck">{attempt.text || '(nothing had been written yet)'}</div>
+            <div className="output output-struck">{attempt.text || t('discarded.nothing')}</div>
           </div>
         ))}
     </section>

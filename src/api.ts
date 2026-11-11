@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Pace, PersonId, Session } from '../shared/types.ts'
+import type { Lang, PersonId, Session } from '../shared/types.ts'
 
 const params = new URLSearchParams(location.search)
 
@@ -42,7 +42,8 @@ export const api = {
   cancel: (messageId: string) => post(`/messages/${messageId}/cancel`),
   answer: (pendingId: string, text: string, by: PersonId) => post(`/pending/${pendingId}/answer`, { text, by }),
   handoff: (model: string, by: PersonId) => post('/handoff', { model, by }),
-  pace: (pace: Pace) => post('/pace', { pace }),
+  typing: (by: PersonId) => post('/typing', { by }),
+  lang: (lang: Lang) => post('/lang', { lang }),
   retry: () => post('/retry'),
   reset: () => post('/reset'),
 }

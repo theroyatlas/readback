@@ -2,7 +2,8 @@
 
 export type PersonId = 'roy' | 'mia'
 
-export type Pace = 'readable' | 'fast' | 'realtime'
+/** Language of the interface and of everything the agent writes about the work (readbacks, questions, checks). */
+export type Lang = 'en' | 'zh'
 
 export type StepStatus = 'pending' | 'running' | 'done'
 
@@ -122,6 +123,21 @@ export interface Handoff {
   at: number
 }
 
+/** Whether the finished deliverable actually follows one pinned instruction. */
+export interface OutcomeCheck {
+  pinId: string
+  met: boolean
+  /** The part of the deliverable that shows it, or what is missing. */
+  evidence: string
+}
+
+/** The check of the final deliverable against the pinned board. */
+export interface Outcome {
+  stepIndex: number
+  status: 'checking' | 'done' | 'failed'
+  checks: OutcomeCheck[]
+}
+
 export type SessionStatus =
   | 'empty'
   | 'planning'
@@ -137,7 +153,7 @@ export interface Session {
   goal: string
   startedBy: PersonId | null
   model: string
-  pace: Pace
+  lang: Lang
   status: SessionStatus
   /** Index of the running step, or of the next step while at a checkpoint. */
   activeStep: number
@@ -146,6 +162,11 @@ export interface Session {
   pins: Pin[]
   pending: PendingItem[]
   handoffs: Handoff[]
+  outcome: Outcome | null
+  /** How many times the agent added a step to fix what the outcome check found. */
+  fixes: number
+  /** Teammates typing right now. The agent holds at its next checkpoint for them. */
+  typing: PersonId[]
   error: string | null
   version: number
 }

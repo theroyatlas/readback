@@ -3,7 +3,7 @@
 // then either waits for the next checkpoint (queue) or interrupts the running step (steer).
 
 import { randomUUID } from 'node:crypto'
-import { MODELS, PACE_CPS, PEOPLE, isPersonId, modelLabel } from '../shared/catalog.ts'
+import { MODELS, PEOPLE, PERSON_IDS, isPersonId, modelLabel } from '../shared/catalog.ts'
 import type { Handoff, HandoffCheck, IntentKind, Message, PendingItem, PersonId, Pin, PinKind, Session, Step } from '../shared/types.ts'
 import { jsonChat, streamChat } from './gmi.ts'
 import * as prompts from './prompts.ts'
@@ -59,9 +59,26 @@ export function postMessage(rt: Runtime, text: string, by: PersonId): Message {
     error: null,
   }
   s.messages.push(message)
+  rt.typing.delete(by)
+  syncTyping(rt)
   touch(rt)
   track(rt, writeReceipt(rt, message))
   return message
+}
+
+/** A teammate is typing. The agent will hold at its next checkpoint until the message is sent. */
+export function typing(rt: Runtime, by: PersonId): void {
+  rt.typing.set(by, Date.now() + 2500)
+  syncTyping(rt)
+  setTimeout(() => syncTyping(rt), 2600)
+}
+
+function syncTyping(rt: Runtime): void {
+  const now = Date.now()
+  const active = PERSON_IDS.filter((who) => (rt.typing.get(who) ?? 0) > now)
+  if (active.join() === rt.session.typing.join()) return
+  rt.session.typing = active
+  touch(rt)
 }
 
 /** A teammate overrides the route the agent proposed: send it now, or withdraw it. */
@@ -379,6 +396,7 @@ async function makePlan(rt: Runtime): Promise<void> {
  */
 async function checkpoint(rt: Runtime, i: number, alive: () => boolean): Promise<void> {
   const s = rt.session
+  let held = 0
   for (;;) {
     s.status = 'checkpoint'
     s.activeStep = i
@@ -409,6 +427,19 @@ async function checkpoint(rt: Runtime, i: number, alive: () => boolean): Promise
       continue
     }
 
+    // Before the work can be signed off, check the deliverable itself against the board.
+    if (i >= s.steps.length && s.steps.length > 0 && s.outcome?.stepIndex !== s.steps.length - 1) {
+      const addedFix = await checkOutcome(rt, s.steps.length - 1)
+      if (!alive() || addedFix) return
+    }
+
+    // Someone is still typing: hold here, so the message lands at this checkpoint instead of arriving late.
+    if (s.typing.length > 0 && held < 15_000) {
+      await sleep(300)
+      held += 300
+      continue
+    }
+
     const finishing = i >= s.steps.length
     const blockers = s.pending.filter(
       (p) => p.status === 'open' && (p.neededByStep === 'final' ? finishing : p.neededByStep <= i),
@@ -435,51 +466,23 @@ async function runStep(rt: Runtime, i: number, alive: () => boolean): Promise<'d
 
   const controller = new AbortController()
   rt.abort = controller
-  let buffer = ''
-  let streamDone = false
   let failure: unknown = null
-  const streaming = streamChat({
-    model: s.model,
-    messages,
-    maxTokens: 900,
-    signal: controller.signal,
-    onDelta: (piece) => {
-      buffer += piece
-    },
-  }).then(
-    () => {
-      streamDone = true
-    },
-    (err) => {
-      failure = err
-      streamDone = true
-    },
-  )
-
-  // Release the text at the session's pace, so teammates can follow it and react mid-step.
-  let budget = 0
-  let last = Date.now()
-  while (alive() && !controller.signal.aborted) {
-    const now = Date.now()
-    const cps = PACE_CPS[s.pace]
-    budget = cps === 0 ? buffer.length : budget + ((now - last) / 1000) * cps
-    last = now
-    const n = Math.min(buffer.length, Math.floor(budget))
-    if (n > 0) {
-      step.output += buffer.slice(0, n)
-      buffer = buffer.slice(n)
-      budget -= n
-      touch(rt)
-    }
-    if (buffer.length === 0) budget = 0
-    if (streamDone && buffer.length === 0) break
-    await sleep(40)
+  try {
+    await streamChat({
+      model: s.model,
+      messages,
+      maxTokens: 900,
+      signal: controller.signal,
+      onDelta: (piece) => {
+        if (!alive()) return
+        step.output += piece
+        touch(rt)
+      },
+    })
+  } catch (err) {
+    failure = err
   }
-  if (!alive()) {
-    controller.abort()
-    return 'done'
-  }
-  await streaming
+  if (!alive()) return 'done'
   rt.abort = null
 
   if (controller.signal.aborted) {
@@ -492,6 +495,57 @@ async function runStep(rt: Runtime, i: number, alive: () => boolean): Promise<'d
   step.status = 'done'
   touch(rt)
   return 'done'
+}
+
+// ---------- outcome check ----------
+
+/**
+ * Checks the final deliverable against every pinned constraint and decision.
+ * If something was not followed, the agent gets one extra step to fix it. Returns true when that step was added.
+ */
+async function checkOutcome(rt: Runtime, last: number): Promise<boolean> {
+  const s = rt.session
+  const pins = prompts.activePins(s).filter((p) => p.kind !== 'gate') // gates are enforced by the checkpoint itself
+  const outcome = { stepIndex: last, status: 'checking' as 'checking' | 'done' | 'failed', checks: [] as { pinId: string; met: boolean; evidence: string }[] }
+  s.outcome = outcome
+  touch(rt)
+  if (pins.length === 0) {
+    outcome.status = 'done'
+    touch(rt)
+    return false
+  }
+  try {
+    const out = await jsonChat<prompts.OutcomeOut>({
+      model: s.model,
+      messages: prompts.outcomeMessages(s, pins, s.steps[last].output),
+      schema: prompts.OUTCOME_SCHEMA,
+      name: 'outcome',
+      maxTokens: 900,
+    })
+    if (rt.session !== s) return false
+    const byPin = new Map((Array.isArray(out.checks) ? out.checks : []).map((c) => [String(c.pin_id), c]))
+    outcome.checks = pins.map((p) => ({ pinId: p.id, met: byPin.get(p.id)?.met === true, evidence: clip(byPin.get(p.id)?.evidence, 240) }))
+    outcome.status = 'done'
+  } catch {
+    if (rt.session !== s) return false
+    outcome.status = 'failed'
+    touch(rt)
+    return false
+  }
+  touch(rt)
+
+  const missed = pins.filter((p) => !outcome.checks.find((c) => c.pinId === p.id)?.met)
+  if (missed.length === 0 || s.fixes >= 1) return false
+  s.fixes += 1
+  s.steps.push(
+    newStep(
+      s.steps.length,
+      s.lang === 'zh' ? '修正沒做到的項目' : 'Fix what the check found',
+      `The complete final deliverable again, corrected so that it follows: ${missed.map((p) => `"${p.text}"`).join('; ')}`,
+    ),
+  )
+  touch(rt)
+  return true
 }
 
 // ---------- handoff ----------
@@ -537,7 +591,7 @@ async function doHandoff(rt: Runtime, h: Handoff, i: number): Promise<void> {
 async function quiz(rt: Runtime, h: Handoff, pins: Pin[], rebrief: boolean): Promise<void> {
   const taken = await jsonChat<prompts.TakeoverOut>({
     model: h.toModel,
-    messages: prompts.takeoverMessages(h.note, pins, rebrief),
+    messages: prompts.takeoverMessages(h.note, pins, rebrief, rt.session.lang),
     schema: prompts.TAKEOVER_SCHEMA,
     name: 'takeover',
     maxTokens: 900,
@@ -554,7 +608,7 @@ async function quiz(rt: Runtime, h: Handoff, pins: Pin[], rebrief: boolean): Pro
   // The outgoing model grades: it is the one that knows what the team meant.
   const graded = await jsonChat<prompts.GradeOut>({
     model: h.fromModel,
-    messages: prompts.gradeMessages(pins, answers),
+    messages: prompts.gradeMessages(pins, answers, rt.session.lang),
     schema: prompts.GRADE_SCHEMA,
     name: 'grades',
     maxTokens: 700,

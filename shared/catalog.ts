@@ -1,4 +1,4 @@
-import type { Pace, PersonId } from './types.ts'
+import type { PersonId } from './types.ts'
 
 export const PEOPLE: Record<PersonId, { id: PersonId; name: string }> = {
   roy: { id: 'roy', name: 'Roy' },
@@ -31,12 +31,3 @@ export function modelLabel(id: string | null): string {
   if (!id) return ''
   return MODELS.find((m) => m.id === id)?.label ?? id
 }
-
-/**
- * Characters per second at which a step's text is released to the session.
- * Fast models finish a step in a few seconds, which leaves teammates no time to react mid-step.
- * 0 means real time: text is released as soon as the model sends it.
- */
-export const PACE_CPS: Record<Pace, number> = { readable: 70, fast: 240, realtime: 0 }
-
-export const PACES: Pace[] = ['readable', 'fast', 'realtime']
