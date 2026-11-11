@@ -82,8 +82,8 @@ const STRINGS = {
   'feed.sub': { en: 'The agent reads every message back before it acts on it.', zh: 'agent 會先複述每一句話，才照著做。' },
   'feed.setGoal': { en: 'set the goal', zh: '訂了目標' },
   'feed.placeholder': {
-    en: 'Tell the agent something. It decides whether to interrupt or wait, and you can overrule it.',
-    zh: '對 agent 說一句話。它會判斷要立刻插話還是排隊，你也可以改掉它的判斷。',
+    en: 'Tell the agent something',
+    zh: '對 agent 說一句話',
   },
   'send': { en: 'Send', zh: '送出' },
   'tag.delivered': { en: 'Delivered', zh: '已送達' },

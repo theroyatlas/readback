@@ -32,6 +32,9 @@ function planText(s: Session): string {
   return s.steps.map((step) => `${step.index + 1}. [${step.status}] ${step.title}`).join('\n')
 }
 
+/** Words as a reader would count them. Models count badly, so the code does it. */
+export const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
 const tail = (text: string, max: number) => (text.length > max ? `...${text.slice(-max)}` : text)
 
 /** Earlier work, compacted. This is the part of the context that is allowed to lose detail. */
@@ -226,11 +229,13 @@ export function stepMessages(s: Session, step: Step): ChatMessage[] {
     .map(describe)
     .filter(Boolean)
 
+  const previous = s.steps.slice(0, step.index).filter((earlier) => earlier.output).pop()
   const user = [
     `Goal: ${s.goal}`,
     '',
     `Work so far (compacted digest):\n${digest(s, step.index)}`,
   ]
+  if (previous) user.push('', `Measured length of the latest version: ${countWords(previous.output)} words.`)
   if (atCheckpoint.length) user.push('', `Teammate messages delivered at this checkpoint:\n${atCheckpoint.join('\n')}`)
   if (steered.length) {
     user.push(
@@ -242,7 +247,7 @@ export function stepMessages(s: Session, step: Step): ChatMessage[] {
     '',
     `Now do step ${step.index + 1} of ${s.steps.length}: ${step.title}`,
     `Deliverable: ${step.deliverable}`,
-    'Write only the deliverable, in plain text without markdown headings. Keep it under 150 words.',
+    'Write only the deliverable, in plain text without markdown headings. Keep it under 150 words, or under any tighter limit on the pinned board.',
   )
 
   return [
@@ -256,7 +261,7 @@ export function stepMessages(s: Session, step: Step): ChatMessage[] {
         '',
         'Never invent concrete facts (dates, prices, names, numbers, links). If one is missing from the board and the goal, write [NEEDS: what is missing] in its place. Wording, angle and structure are yours to choose.',
         'The deliverable is for the audience named in the goal. Do not address your teammates inside it.',
-        'Before you answer, check your text against every line of the pinned board. If a length limit is pinned, count and stay clearly under it.',
+        'Before you answer, check your text against every line of the pinned board. If a length limit is pinned, aim at least a fifth below it: models overshoot when they count.',
       ].join('\n'),
     },
     { role: 'user', content: user.join('\n') },
@@ -292,7 +297,7 @@ export interface OutcomeOut {
 
 /** A readback says what the agent understood. This checks what it actually delivered. */
 export function outcomeMessages(s: Session, pins: Pin[], deliverable: string): ChatMessage[] {
-  const words = deliverable.trim().split(/\s+/).filter(Boolean).length
+  const words = countWords(deliverable)
   const rows = pins.map((p) => `${p.id} [${p.kind}] "${p.text}"${p.context ? ` (answer to: ${p.context})` : ''}`).join('\n')
   return [
     {
