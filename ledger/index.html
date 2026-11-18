@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="個人記帳。收入、支出與餘額存在這台裝置的瀏覽器裡。" />
+    <title>記帳</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="wrap" id="ledger">
+      <header class="mast">
+        <div class="brand">
+          <span class="seal" aria-hidden="true">帳</span>
+          <div>
+            <h1>記帳</h1>
+            <p class="lede">收入、支出、餘額，都留在這台裝置上。</p>
+          </div>
+        </div>
+        <p id="today" class="today"></p>
+      </header>
+
+      <section class="balance" aria-labelledby="balance-label">
+        <p id="balance-label" class="label">總餘額</p>
+        <p id="balance" class="balance-amount" aria-live="polite">NT$0</p>
+        <div class="split">
+          <p><span>收入</span> <strong id="total-income">NT$0</strong></p>
+          <p><span>支出</span> <strong id="total-expense">NT$0</strong></p>
+        </div>
+        <p id="balance-hint" class="hint" hidden>餘額含全部紀錄，不受下方篩選影響。</p>
+      </section>
+
+      <section class="card">
+        <h2>記一筆</h2>
+        <form id="entry-form" autocomplete="off">
+          <div class="type" role="radiogroup" aria-label="類型">
+            <label>
+              <input type="radio" name="type" value="expense" checked />
+              支出
+            </label>
+            <label>
+              <input type="radio" name="type" value="income" />
+              收入
+            </label>
+          </div>
+          <label class="field">
+            金額
+            <input id="amount" name="amount" inputmode="decimal" placeholder="例如 120" />
+          </label>
+          <div class="row">
+            <label class="field">
+              分類
+              <select id="category" name="category"></select>
+            </label>
+            <label class="field">
+              日期
+              <input id="date" name="date" type="date" />
+            </label>
+          </div>
+          <label class="field">
+            備註
+            <input id="note" name="note" maxlength="80" placeholder="選填，例如午餐便當" />
+          </label>
+          <p id="form-error" class="error" role="alert"></p>
+          <button type="submit">加入紀錄</button>
+        </form>
+      </section>
+
+      <section class="list-section" aria-labelledby="list-heading">
+        <div class="list-head">
+          <div>
+            <h2 id="list-heading">明細</h2>
+            <p id="entry-count" class="count">共 0 筆</p>
+          </div>
+          <div class="filters" role="group" aria-label="篩選">
+            <button type="button" data-filter="all" aria-pressed="true">全部</button>
+            <button type="button" data-filter="income" aria-pressed="false">收入</button>
+            <button type="button" data-filter="expense" aria-pressed="false">支出</button>
+          </div>
+        </div>
+        <p id="empty" class="empty">還沒有紀錄。記一筆收入或支出，餘額會跟著更新。</p>
+        <ul id="entries" hidden></ul>
+      </section>
+    </main>
+    <noscript><p class="noscript">請開啟 JavaScript，紀錄才存得住。</p></noscript>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
